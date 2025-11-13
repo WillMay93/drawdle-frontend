@@ -1,0 +1,24 @@
+@import "tailwindcss/preflight";
+@import "tailwindcss/theme";
+@import "tailwindcss/utilities";
+
+
+.font-handdrawn {
+  font-family: var(--font-handdrawn), cursive;
+}
+
+/* Chalky fade scribble animation */
+@keyframes scribble {
+  0% {
+    transform: rotate(-8deg) scale(0.9);
+    opacity: 0;
+  }
+  50% {
+    transform: rotate(-8deg) scale(1.05);
+    opacity: 0.8;
+  }
+  100% {
+    transform: rotate(-8deg) scale(1);
+    opacity: 1;
+  }
+}
