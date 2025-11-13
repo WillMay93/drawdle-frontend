@@ -7,9 +7,41 @@ export default function LeaderboardPage() {
   const [selectedImage, setSelectedImage] = useState(null);
 
   useEffect(() => {
-    fetch("https://drawdle-backend-v1.onrender.com/leaderboard"         className="flex flex-col sm:flex-row items-center justify-between py-5 border-b border-white/30 last:border-none gap-6"
+    async function loadScores() {
+      try {
+        const res = await fetch("https://drawdle-backend-v1.onrender.com/leaderboard");
+        const data = await res.json();
+        setScores(data.scores || []);
+      } catch (err) {
+        console.error("Failed to fetch leaderboard:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadScores();
+  }, []);
+
+  return (
+    <div className="min-h-screen bg-[#2d8b57] text-white font-handdrawn p-6 relative">
+      {/* chalk overlay */}
+      <div className="absolute inset-0 bg-[url('/chalk-texture.png')] opacity-15 pointer-events-none mix-blend-overlay"></div>
+
+      <h1 className="text-6xl text-center mb-8">🏆 Leaderboard</h1>
+
+      {/* Loading */}
+      {loading ? (
+        <p className="text-center text-3xl mt-20 animate-pulse">Loading...</p>
+      ) : scores.length === 0 ? (
+        <p className="text-center text-3xl mt-20">No scores yet!</p>
+      ) : (
+        <div className="max-w-4xl mx-auto space-y-6 relative z-10">
+          {scores.map((entry, index) => (
+            <div
+              key={index}
+              className="flex flex-col sm:flex-row items-center justify-between py-5 border-b border-white/30 last:border-none gap-6"
             >
-              {/* Left side: rank + name */}
+              {/* Rank + Name */}
               <div className="flex items-center gap-4">
                 <span className="text-3xl">{index + 1}.</span>
                 <div className="flex flex-col">
@@ -20,7 +52,7 @@ export default function LeaderboardPage() {
                 </div>
               </div>
 
-              {/* Middle: image thumbnail */}
+              {/* Drawing preview */}
               {entry.image && (
                 <button
                   onClick={() => setSelectedImage(entry.image)}
@@ -37,34 +69,39 @@ export default function LeaderboardPage() {
                 </button>
               )}
 
-              {/* Right side: score */}
+              {/* Score */}
               <span className="text-4xl font-bold">{entry.score}</span>
             </div>
           ))}
         </div>
       )}
 
-      {/* Back button */}
+      {/* Back */}
       <button
         onClick={() => (window.location.href = "/")}
-        className="mt-10 text-3xl underline decoration-[3px] underline-offset-4 hover:scale-110 transition-transform"
+        className="mt-10 text-3xl underline decoration-[3px] underline-offset-4 block mx-auto hover:scale-110 transition-transform"
       >
         Back to Start
       </button>
 
-      {/* Image preview modal */}
+      {/* Image modal */}
       {selectedImage && (
         <div
-          className="fixed inset-0 bg-[#000000b0] backdrop-blur-sm flex items-center justify-center z-50 cursor-pointer"
+          className="fixed inset-0 bg-[#000000b0] flex items-center justify-center backdrop-blur-sm z-50 cursor-pointer"
           onClick={() => setSelectedImage(null)}
         >
           <div className="absolute inset-0 bg-[url('/chalk-texture.png')] opacity-20 mix-blend-overlay pointer-events-none"></div>
-          <div className="relative p-4 bg-[#2d8b57] border-4 border-white rounded-2xl shadow-2xl max-w-4xl w-[90%] flex flex-col items-center animate-chalkPop">
+
+          <div
+            className="relative p-4 bg-[#2d8b57] border-4 border-white rounded-2xl shadow-2xl max-w-4xl w-[90%] flex flex-col items-center animate-chalkPop"
+            onClick={(e) => e.stopPropagation()}
+          >
             <img
               src={selectedImage}
               alt="Zoomed drawing"
               className="max-h-[75vh] object-contain rounded-lg border-4 border-white shadow-lg"
             />
+
             <button
               onClick={() => setSelectedImage(null)}
               className="mt-6 bg-white text-[#2d8b57] px-8 py-3 rounded-md text-2xl border-2 border-white hover:bg-[#2d8b57] hover:text-white transition-all hover:scale-105"
