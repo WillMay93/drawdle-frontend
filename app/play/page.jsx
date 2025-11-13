@@ -29,7 +29,7 @@ export default function PlayPage() {
   const [targetInfo, setTargetInfo] = useState(null);
 
 useEffect(() => {
-  fetch("http://127.0.0.1:5050/target")
+  fetch("https://drawdle-backend-v1.onrender.com/target")
     .then((res) => res.json())
     .then((data) => setTargetInfo(data))
     .catch((err) => console.error("Failed to fetch target:", err));
@@ -41,7 +41,7 @@ const submitDrawing = async () => {
   setLoading(true);
 
   try {
-    const res = await fetch("http://127.0.0.1:5050/submit", {
+    const res = await fetch("https://drawdle-backend-v1.onrender.com/submit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ image_base64: imageBase64, attempt }),
@@ -72,7 +72,7 @@ const score = Math.min(100, Math.max(0, base + styleBonus - attemptPenalty));
 
     // Save leaderboard entry via Flask API
     try {
-      await fetch("http://127.0.0.1:5050/leaderboard", {
+      await fetch("https://drawdle-backend-v1.onrender.com/leaderboard", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
