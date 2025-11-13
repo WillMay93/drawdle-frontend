@@ -7,34 +7,7 @@ export default function LeaderboardPage() {
   const [selectedImage, setSelectedImage] = useState(null);
 
   useEffect(() => {
-    fetch("http://127.0.0.1:5000/leaderboard")
-      .then((res) => res.json())
-      .then((data) => {
-        setScores(data || []);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, []);
-
-  return (
-    <div className="relative min-h-screen bg-[#2d8b57] text-white font-handdrawn flex flex-col items-center justify-center p-6">
-      {/* Chalk texture overlay */}
-      <div className="absolute inset-0 bg-[url('/chalk-texture.png')] opacity-15 mix-blend-overlay pointer-events-none"></div>
-
-      <h1 className="text-6xl mb-8 animate-[scribble_2s_ease-in-out_1]">
-        🏆 Leaderboard
-      </h1>
-
-      {loading ? (
-        <p className="text-3xl animate-pulse">Loading...</p>
-      ) : scores.length === 0 ? (
-        <p className="text-3xl opacity-80">No scores yet — be the first!</p>
-      ) : (
-        <div className="bg-white/10 border-4 border-white rounded-2xl p-8 shadow-xl max-w-4xl w-full">
-          {scores.map((entry, index) => (
-            <div
-              key={index}
-              className="flex flex-col sm:flex-row items-center justify-between py-5 border-b border-white/30 last:border-none gap-6"
+    fetch("https://drawdle-backend-v1.onrender.com/leaderboard"         className="flex flex-col sm:flex-row items-center justify-between py-5 border-b border-white/30 last:border-none gap-6"
             >
               {/* Left side: rank + name */}
               <div className="flex items-center gap-4">
