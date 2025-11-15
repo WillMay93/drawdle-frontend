@@ -6,21 +6,24 @@ export default function LeaderboardPage() {
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState(null);
 
-  useEffect(() => {
-    async function loadScores() {
-      try {
-        const res = await fetch("https://drawdle-backend-v1.onrender.com/leaderboard");
-        const data = await res.json();
-        setScores(data.scores || []);
-      } catch (err) {
-        console.error("Failed to fetch leaderboard:", err);
-      } finally {
-        setLoading(false);
-      }
+useEffect(() => {
+  async function loadScores() {
+    try {
+      const res = await fetch("https://drawdle-backend-v1.onrender.com/leaderboard");
+      const data = await res.json();
+      console.log("Leaderboard data:", data); // DEBUG
+      setScores(data || []);   // <-- FIXED
+    } catch (err) {
+      console.error("Failed to fetch leaderboard:", err);
+      setScores([]);
+    } finally {
+      setLoading(false);
     }
+  }
 
-    loadScores();
-  }, []);
+  loadScores();
+}, []);
+
 
   return (
     <div className="min-h-screen bg-[#2d8b57] text-white font-handdrawn p-6 relative">
