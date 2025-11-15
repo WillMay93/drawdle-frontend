@@ -71,20 +71,24 @@ const score = Math.min(100, Math.max(0, base + styleBonus - attemptPenalty));
     const playerName = localStorage.getItem("playerName") || "Unknown";
 
     // Save leaderboard entry via Flask API
-    try {
-      await fetch("https://drawdle-backend-v1.onrender.com/leaderboard", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: playerName,
-          score,
-          attempts: attempt,
-          image: imageBase64,
-        }),
-      });
-    } catch (err) {
-      console.error("Failed to save leaderboard entry:", err);
-    }
+  // Save leaderboard entry ONLY when guessed correctly
+if (data.success) {
+  try {
+    await fetch("https://drawdle-backend-v1.onrender.com/leaderboard", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: playerName,
+        score,
+        attempts: attempt,
+        image: imageBase64,
+      }),
+    });
+  } catch (err) {
+    console.error("Failed to save leaderboard entry:", err);
+  }
+}
+
 
     // Handle win / lose logic
     if (data.success) {
