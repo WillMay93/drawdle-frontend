@@ -6,6 +6,7 @@ export default function StartPage() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [loaded, setLoaded] = useState(false);
+  const [mode, setMode] = useState("easy");
 
   useEffect(() => {
     // trigger fade-in animation after mount
@@ -13,15 +14,11 @@ export default function StartPage() {
     return () => clearTimeout(timer);
   }, []);
 
-  const [wiping, setWiping] = useState(false);
-
 const startGame = () => {
   if (!name.trim()) return alert("Enter your name!");
-  setWiping(true);
-  setTimeout(() => {
-    localStorage.setItem("playerName", name);
-    router.push("/play");
-  }, 1200); // delay while animation plays
+  localStorage.setItem("playerName", name);
+  localStorage.setItem("gameMode", mode);
+  router.push("/play");
 };
 
 
@@ -57,6 +54,33 @@ const startGame = () => {
   </div>
 </div>
 
+        <div className="flex flex-col items-center gap-3">
+          <div className="flex gap-3">
+            {[
+              { label: "Easy", value: "easy", note: "Relaxed play" },
+              { label: "Hard", value: "hard", note: "10s timer" },
+            ].map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setMode(option.value)}
+                className={`px-4 py-2 rounded-md border-2 border-white text-xl transition-all ${
+                  mode === option.value
+                    ? "bg-white text-[#2d8b57] scale-105"
+                    : "bg-transparent text-white hover:bg-white/10"
+                }`}
+              >
+                <div>{option.label}</div>
+                <div className="text-sm opacity-80">{option.note}</div>
+              </button>
+            ))}
+          </div>
+          <p className="text-lg opacity-80 text-center max-w-sm">
+            Hard mode gives you 10 seconds per attempt—miss the timer and you
+            lose the attempt automatically.
+          </p>
+        </div>
+
         <button
           onClick={startGame}
           className="text-4xl font-bold underline decoration-[3px] underline-offset-4 hover:scale-110 transition-transform animate-bounce"
@@ -64,10 +88,6 @@ const startGame = () => {
           START
         </button>
       </div>
-      {wiping && (
-  <div className="fixed inset-0 bg-[#2d8b57] z-50 animate-[wipe_4s_ease-in-out_forwards] pointer-events-none" />
-)}
-
     </div>
     
   );
