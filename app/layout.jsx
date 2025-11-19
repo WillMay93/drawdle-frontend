@@ -1,8 +1,8 @@
 // app/layout.jsx
 import "./globals.css";
-import { Permanent_Marker } from "next/font/google";
+import { Gochi_Hand } from "next/font/google";
 
-const handdrawn = Permanent_Marker({
+const handdrawn = Gochi_Hand({
   subsets: ["latin"],
   weight: "400",
   variable: "--font-handdrawn",
