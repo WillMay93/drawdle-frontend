@@ -1,7 +1,14 @@
 "use client";
 
-import { useState, useRef, useEffect} from "react";
-import { Undo2Icon, ArrowUpRightIcon } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import {
+  Undo2Icon,
+  ArrowUpRightIcon,
+  Trash2Icon,
+  EraserIcon,
+  InfoIcon,
+  BotIcon,
+} from "lucide-react";
 import DrawingCanvas from "@/components/DrawingCanvas";
 
 
@@ -21,12 +28,39 @@ export default function PlayPage() {
   const [expectedCategory, setExpectedCategory] = useState("");
   const [shapeMatch, setShapeMatch] = useState(false);
   const [showIntro, setShowIntro] = useState(true);
+  const [introLeaving, setIntroLeaving] = useState(false);
+  const closeIntro = () => {
+    if (!introLeaving) setIntroLeaving(true);
+  };
+  const [hasDrawing, setHasDrawing] = useState(false);
+  const [hint, setHint] = useState("");
+  const [showHint, setShowHint] = useState(false);
+  const [hintLocation, setHintLocation] = useState("");
+  const [mode, setMode] = useState("easy");
+  const [timeLeft, setTimeLeft] = useState(null);
+  const [timePenaltyMessage, setTimePenaltyMessage] = useState("");
   const undoRef = useRef(null);
   const maxAttempts = 5;
   const doUndo = () => undoRef.current?.undo && undoRef.current.undo();
   const palette = ["#000000", "#e63946", "#457b9d", "#2a9d8f", "#f4a261", "#f9c74f"];
 
+  const PaletteControls = ({ className = "" }) => (
+    <div className={`flex gap-2 sm:gap-3 ${className}`}>
+      {palette.map((c) => (
+        <button
+          key={c}
+          onClick={() => setBrushColor(c)}
+          className={`w-7 h-7 sm:w-9 sm:h-9 rounded-full border-2 transition-all ${
+            brushColor === c ? "border-white scale-110" : "border-transparent opacity-80"
+          }`}
+          style={{ backgroundColor: c }}
+        />
+      ))}
+    </div>
+  );
+
   const [targetInfo, setTargetInfo] = useState(null);
+  const hardMode = mode === "hard";
 
 useEffect(() => {
   fetch("https://drawdle-backend-v1.onrender.com/target")
@@ -35,51 +69,111 @@ useEffect(() => {
     .catch((err) => console.error("Failed to fetch target:", err));
 }, []);
 
+useEffect(() => {
+  const storedMode = localStorage.getItem("gameMode");
+  if (storedMode === "hard" || storedMode === "easy") {
+    setMode(storedMode);
+  }
+}, []);
+
+useEffect(() => {
+  if (!hardMode || showWin || showGameOver) {
+    setTimeLeft(null);
+    return;
+  }
+  setTimeLeft(10);
+}, [hardMode, attempt, showWin, showGameOver]);
+
+useEffect(() => {
+  if (!hardMode || showWin || showGameOver) return;
+  if (timeLeft === null || timeLeft <= 0) return;
+  const timer = setInterval(() => {
+    setTimeLeft((prev) => (prev === null ? prev : Math.max(prev - 1, 0)));
+  }, 1000);
+  return () => clearInterval(timer);
+}, [hardMode, timeLeft, showWin, showGameOver]);
+
+const handleTimeExpired = useCallback(() => {
+  setTimePenaltyMessage("⏰ Time's up! Attempt lost.");
+  setAttempt((currentAttempt) => {
+    const nextAttempt = currentAttempt + 1;
+    if (nextAttempt > maxAttempts) {
+      setFinalScore(0);
+      setShowGameOver(true);
+      setTimeLeft(null);
+      setTimeout(() => (window.location.href = "/leaderboard"), 2500);
+      return currentAttempt;
+    }
+    setTimeLeft(10);
+    return nextAttempt;
+  });
+}, [maxAttempts]);
+
+useEffect(() => {
+  if (!hardMode || showWin || showGameOver) return;
+  if (timeLeft !== 0) return;
+  handleTimeExpired();
+}, [hardMode, timeLeft, showWin, showGameOver, handleTimeExpired]);
+
+useEffect(() => {
+  if (!timePenaltyMessage) return;
+  const timeout = setTimeout(() => setTimePenaltyMessage(""), 2000);
+  return () => clearTimeout(timeout);
+}, [timePenaltyMessage]);
 
 const submitDrawing = async () => {
-  if (!imageBase64) return alert("Draw something first!");
+  if (!hasDrawing) return alert("Draw something first!");
+  setTimePenaltyMessage("");
   setLoading(true);
 
   try {
     const res = await fetch("https://drawdle-backend-v1.onrender.com/submit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image_base64: imageBase64, attempt }),
+      body: JSON.stringify({ image_base64: imageBase64, attempt, colour: brushColor }),
     });
 
     const data = await res.json();
 
+    const success = Boolean(data.success);
+    const categoryMatches =
+      data.category_match !== undefined ? Boolean(data.category_match) : success;
+
     setAiGuess(data.guess || "—");
     setCategory(data.category || "—");
-    setCategoryMatch(Boolean(data.success));
+    setCategoryMatch(categoryMatches);
     setColorMatch(Boolean(data.color_match));
     setStyleScore(Number(data.style_score) || 0);
     setExpectedCategory(data.expected_category || "");
     setShapeMatch(Boolean(data.shape_match));
+    setHint(data.hint || "");
+    setShowHint(false);
+    setHintLocation(data.hint_location || "");
 
-    // Calculate final score
-    const style = data.style_score ?? 0;
-
-// New strict scoring
-let base = 50; // base if guessed correctly
-if (data.color_match) base += 20;
-if (data.shape_match) base += 20;
-const styleBonus = Math.min(styleScore, 10);
-const attemptPenalty = (attempt - 1) * 10;
-
-const score = Math.min(100, Math.max(0, base + styleBonus - attemptPenalty));
+    const scoreFromApi =
+      typeof data.score === "number"
+        ? data.score
+        : (() => {
+            const style = Number(data.style_score) || 0;
+            let base = 50;
+            if (data.color_match) base += 20;
+            if (data.shape_match) base += 20;
+            const styleBonus = Math.min(style, 25);
+            const attemptPenalty = (attempt - 1) * 10;
+            return Math.min(100, Math.max(0, base + styleBonus - attemptPenalty));
+          })();
     const playerName = localStorage.getItem("playerName") || "Unknown";
 
     // Save leaderboard entry via Flask API
-  // Save leaderboard entry ONLY when guessed correctly
-if (data.success) {
+// Save leaderboard entry ONLY when guessed correctly
+if (success) {
   try {
     await fetch("https://drawdle-backend-v1.onrender.com/leaderboard", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: playerName,
-        score,
+        score: scoreFromApi,
         attempts: attempt,
         image: imageBase64,
       }),
@@ -91,12 +185,12 @@ if (data.success) {
 
 
     // Handle win / lose logic
-    if (data.success) {
-      setFinalScore(score);
+    if (success) {
+      setFinalScore(scoreFromApi);
       setShowWin(true);
       setTimeout(() => (window.location.href = "/leaderboard"), 2000);
     } else if (attempt >= maxAttempts) {
-      setFinalScore(score);
+      setFinalScore(scoreFromApi);
       setShowGameOver(true);
       setTimeout(() => (window.location.href = "/leaderboard"), 2500);
     } else {
@@ -114,29 +208,42 @@ if (data.success) {
   
 
   return (
-    <div className="relative min-h-screen bg-[#2d8b57] text-white font-handdrawn flex flex-col items-center justify-between py-4 px-3 overflow-hidden">
+    <div className="relative min-h-screen bg-[#2d8b57] text-white font-handdrawn flex flex-col items-center justify-between py-2 sm:py-4 px-3 min-w-0">
       
       
       {/* Intro */}
 
-{showIntro && (
-  <div className="absolute inset-0 bg-[#000000b0] flex items-center justify-center z-50 text-white font-handdrawn overflow-y-auto">
+{(showIntro || introLeaving) && (
+  <div
+    className={`absolute inset-0 bg-[#000000b0] flex items-center justify-center z-50 text-white font-handdrawn overflow-y-auto transition-opacity duration-500 ${
+      introLeaving ? "opacity-0 pointer-events-none" : "opacity-100"
+    }`}
+    onTransitionEnd={() => {
+      if (introLeaving) {
+        setShowIntro(false);
+        setIntroLeaving(false);
+      }
+    }}
+  >
     <div className="absolute inset-0 bg-[url('/chalk-texture.png')] opacity-20 mix-blend-overlay"></div>
 
-    <div className="relative bg-[#2d8b57] border-4 border-white rounded-xl p-6 sm:p-10 text-center max-w-2xl w-[90%] shadow-[0_0_30px_rgba(255,255,255,0.2)] animate-chalkPop">
+    <div
+      className={`relative bg-[#2d8b57] border-4 border-white rounded-xl p-6 sm:p-10 text-center max-w-2xl w-[90%] shadow-[0_0_30px_rgba(255,255,255,0.2)] transition-transform duration-500 ${
+        introLeaving ? "scale-90 opacity-0" : "animate-chalkPop"
+      }`}
+    >
       <h2 className="text-3xl sm:text-5xl mb-6 font-handdrawn">🎨 How to Play 🎨</h2>
 
-      <ul className="text-lg sm:text-2xl text-left leading-relaxed space-y-3 sm:space-y-4 mx-auto max-w-lg">
-        <li>🧠 <strong>AI is the judge</strong> — it will guess your drawing.</li>
-        <li>🟢 <strong>Indicators turn green</strong> when you’re correct.</li>
-        <li>🏆 <strong>Guess it correctly</strong> and you win the round.</li>
-        <li>⏱️ <strong>The quicker and more stylish</strong>, the higher your score!</li>
-        <li>🌈 <strong>Bring it to life with colour</strong> — creativity counts!</li>
-        <li>✏️ <strong>You have 5 attempts</strong> to help the AI guess it right!</li>
+      <ul className="text-lg sm:text-2xl text-left leading-relaxed space-y-3 sm:space-y-4 mx-auto max-w-xl">
+        <li>🧠 The AI is trying its best to guess your masterpiece!</li>
+        <li>🕵️ Watch the category, colour, and shape lights — they turn green when you’re nailing it.</li>
+        <li>🔮 After your first try, tap the Hint button for a cheeky little clue.</li>
+        <li>🚨 You’ve got 5 attempts to crack the secret prompt — make ’em count!</li>
+        <li>🌈 Style points are up for grabs, so jazz up that drawing!</li>
       </ul>
 
       <button
-        onClick={() => setShowIntro(false)}
+        onClick={closeIntro}
         className="mt-8 bg-white text-[#2d8b57] px-8 sm:px-10 py-3 sm:py-4 rounded-md text-xl sm:text-2xl border-2 border-white hover:bg-[#2d8b57] hover:text-white transition-all hover:scale-105"
       >
         Got it! →
@@ -149,95 +256,155 @@ if (data.success) {
       {/* Chalk texture */}
       <div className="absolute inset-0 bg-[url('/chalk-texture.png')] opacity-15 mix-blend-overlay pointer-events-none"></div>
 
-      {/* Top bar */}
-      <div className="absolute top-4 left-4 right-4 flex flex-wrap items-center justify-between z-20 gap-3">
-      <div className="flex gap-3 items-center">
-  {[...Array(maxAttempts)].map((_, i) => (
-    <div
-      key={i}
-      className={`w-8 h-8 sm:w-8 sm:h-8 rounded-full border-2 ${
-        i < attempt ? "bg-white border-white" : "border-white/60"
-      } ${i === attempt - 1 ? "animate-chalkPop" : ""} transition-all`}
-      
-    ></div>
-  ))}
+{/* Top bar */}
+<div className="absolute top-1 left-4 right-4 flex flex-col sm:flex-row items-start sm:items-center justify-between z-20 px-2 gap-1 sm:gap-2">
+  
+  {/* Attempts (text version) */}
+  <div className="text-2xl sm:text-3xl font-bold hidden sm:block">
+    Attempt {attempt} / {maxAttempts}
+    {hardMode && timeLeft !== null && (
+      <span className="ml-3 text-xl font-normal">· {String(timeLeft).padStart(2, "0")}s</span>
+    )}
+  </div>
+
+  {/* Colour palette (desktop) */}
+  <div className="hidden sm:flex">
+    <PaletteControls />
+  </div>
 </div>
 
-        <div className="flex flex-wrap justify-end gap-2 max-w-[80%]">
-          {palette.map((c) => (
-            <button
-              key={c}
-              onClick={() => setBrushColor(c)}
-              className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full border-2 transition-all ${
-                brushColor === c ? "border-white scale-110" : "border-transparent opacity-80"
-              }`}
-              style={{ backgroundColor: c }}
-            />
-          ))}
-        </div>
-      </div>
 
       {/* Canvas area */}
-      <div className="flex-1 w-full flex flex-col items-center justify-center relative z-10 px-3">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl aspect-4/3 sm:aspect-video flex items-center justify-center overflow-hidden">
+      <div className="flex-1 w-full flex flex-col items-center justify-start sm:justify-center gap-2 sm:gap-6 relative z-10 px-2 sm:px-3 pt-2 sm:pt-0 pb-16 sm:pb-36">
+        {/* Colour palette (mobile) */}
+        <div className="w-full flex justify-center sm:hidden">
+          <PaletteControls className="justify-center" />
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl aspect-[3/4] sm:aspect-video flex items-center justify-center overflow-hidden">
           <DrawingCanvas
+            ref={undoRef}
             width={1000}
             height={800}
             color={brushColor}
             size={12}
             onChangeImageBase64={setImageBase64}
-            undoRef={undoRef}
+            onDrawStateChange={setHasDrawing}
           />
         </div>
 
+        {/* Mobile attempts */}
+        <div className="sm:hidden text-lg font-bold text-center w-full mt-0.5">
+          Attempt {attempt} / {maxAttempts}
+          {hardMode && timeLeft !== null && (
+            <span className="ml-2 text-base font-normal">{String(timeLeft).padStart(2, "0")}s</span>
+          )}
+        </div>
+
         {/* Status indicators */}
-        <div className="flex justify-center gap-8 items-center mt-8 flex-wrap">
-        {[
-  {
-    ok: category?.toLowerCase() === expectedCategory?.toLowerCase(),
-    label: "Category",
-  },
-  { ok: colorMatch, label: "Colour" },
-  { ok: shapeMatch, label: "Shape" },
-].map((x) => (
-  <div key={x.label} className="flex flex-col items-center">
-    <div
-      className={`w-16 h-16 rounded-full transition-all ${
-        x.ok ? "bg-green-500 scale-110" : "bg-red-500"
-      }`}
-    ></div>
-    <span className="mt-2 text-base font-semibold">{x.label}</span>
-  </div>
-))}
-
-
+        <div className="flex justify-center gap-5 sm:gap-12 items-center mt-1 sm:mt-6 flex-wrap text-2xl sm:text-4xl font-semibold tracking-wider">
+          {[
+            {
+              ok: category?.toLowerCase() === expectedCategory?.toLowerCase(),
+              label: "Category",
+            },
+            { ok: colorMatch, label: "Colour" },
+            { ok: shapeMatch, label: "Shape" },
+          ].map((x) => (
+            <div
+              key={x.label}
+              className={`uppercase ${
+                x.ok ? "text-green-300" : "text-red-300"
+              }`}
+            >
+              {x.label}
+            </div>
+          ))}
         </div>
 
         {/* AI feedback */}
-        <div className="text-center mt-8 text-xl sm:text-2xl">
-          <p>
+        <div className="text-center mt-0 sm:mt-6 text-2xl sm:text-3xl flex flex-col items-center gap-2">
+          <p className="leading-snug">
             <span className="font-bold">AI Guess:</span> {aiGuess}
           </p>
           <p className="opacity-90">Category: {category}</p>
+          <div className="flex flex-col sm:flex-row gap-3 mt-1">
+            <button
+              type="button"
+              className={`flex items-center gap-2 px-4 py-2 rounded-full border-2 border-white/70 text-xl ${
+                hint ? "opacity-90" : "opacity-50 cursor-not-allowed"
+              }`}
+              onClick={() => hint && setShowHint((prev) => !prev)}
+              disabled={!hint}
+            >
+              <InfoIcon className="w-5 h-5" />
+              <span>Hint</span>
+            </button>
+          </div>
+          {showHint && hint && (
+            <p className="text-lg sm:text-2xl max-w-md text-center mt-1">
+{hintLocation
+  ? `${hint} — Likely found: ${hintLocation}`
+  : hint}
+
+            </p>
+          )}
+          {timePenaltyMessage && (
+            <p className="text-base text-red-200 mt-1">{timePenaltyMessage}</p>
+          )}
         </div>
       </div>
 
-      {/* Controls */}
-      <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex gap-10 items-center z-20">
-        <button
-          onClick={doUndo}
-          className="w-16 h-16 sm:w-15 sm:h-15 bg-white text-black rounded-full flex items-center justify-center hover:scale-110 transition-transform shadow-md"
-        >
-          <Undo2Icon className="w-8 h-8 sm:w-10 sm:h-10" />
-        </button>
-        <button
-          onClick={submitDrawing}
-          disabled={loading}
-          className="w-16 h-16 sm:w-15 sm:h-15 bg-white text-[#2d8b57] rounded-full flex items-center justify-center hover:scale-110 transition-transform shadow-lg disabled:opacity-50 border-2 border-white hover:bg-[#2d8b57] hover:text-white"
-        >
-          <ArrowUpRightIcon className="w-8 h-8 sm:w-10 sm:h-10" />
-        </button>
-      </div>
+{/* Controls */}
+<div className="mt-3 sm:mt-0 flex flex-wrap sm:flex-nowrap justify-center gap-3 sm:gap-14 items-center w-full max-w-xl sm:max-w-none sm:absolute sm:bottom-6 sm:left-1/2 sm:-translate-x-1/2 sm:z-20 pb-3 sm:pb-0">
+
+  {/* Undo */}
+  <div className="flex flex-col items-center gap-1">
+    <button
+      onClick={doUndo}
+      className="w-11 h-11 sm:w-16 sm:h-16 bg-white text-black rounded-full flex items-center justify-center hover:scale-110 transition-transform shadow-md"
+    >
+      <Undo2Icon className="w-8 h-8" />
+    </button>
+    <span className="text-lg">Undo</span>
+  </div>
+
+  {/* Clear */}
+  <div className="flex flex-col items-center gap-1">
+    <button
+      onClick={() => undoRef.current?.clear?.()}
+      className="w-11 h-11 sm:w-16 sm:h-16 bg-white text-black rounded-full flex items-center justify-center hover:scale-110 transition-transform shadow-md"
+    >
+      <Trash2Icon className="w-8 h-8" />
+    </button>
+    <span className="text-lg">Clear</span>
+  </div>
+
+  {/* Eraser */}
+  <div className="flex flex-col items-center gap-1">
+    <button
+      onClick={() => setBrushColor("#ffffff")}
+      className="w-11 h-11 sm:w-16 sm:h-16 bg-white text-black rounded-full flex items-center justify-center hover:scale-110 transition-transform shadow-md"
+    >
+      <EraserIcon className="w-8 h-8" />
+    </button>
+    <span className="text-lg">Eraser</span>
+  </div>
+
+  {/* Submit */}
+  <div className="flex flex-col items-center gap-1">
+    <button
+      onClick={submitDrawing}
+      disabled={loading}
+      className="w-11 h-11 sm:w-16 sm:h-16 bg-white text-[#2d8b57] rounded-full flex items-center justify-center hover:scale-110 transition-transform shadow-lg border-2 border-white disabled:opacity-50"
+    >
+      <ArrowUpRightIcon className="w-8 h-8" />
+    </button>
+    <span className="text-lg">Submit</span>
+  </div>
+
+</div>
+
 
       {/* Win modal */}
       {showWin && (
@@ -260,22 +427,11 @@ if (data.success) {
 {loading && (
   <div className="absolute inset-0 bg-[#000000b0] backdrop-blur-sm flex flex-col items-center justify-center z-50 text-white font-handdrawn">
     <div className="absolute inset-0 bg-[url('/chalk-texture.png')] opacity-20 mix-blend-overlay pointer-events-none"></div>
-    <div className="flex flex-col items-center justify-center animate-pulse">
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        className="w-32 h-32 mb-4 opacity-90"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke="white"
-        strokeWidth={1.5}
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M9 17v1a3 3 0 0 0 6 0v-1m3-5a9 9 0 1 0-18 0 9 9 0 0 0 18 0z"
-        />
-      </svg>
-      <p className="text-4xl sm:text-5xl tracking-wide animate-[pulse_1.2s_ease-in-out_infinite]">
+    <div className="flex flex-col items-center justify-center gap-4 animate-[pulse_1.2s_ease-in-out_infinite]">
+      <div className="w-28 h-28 sm:w-32 sm:h-32 bg-white text-[#2d8b57] rounded-full flex items-center justify-center shadow-2xl border-4 border-white/70">
+        <BotIcon className="w-16 h-16 sm:w-20 sm:h-20" />
+      </div>
+      <p className="text-4xl sm:text-5xl tracking-wide">
         Thinking<span className="animate-bounce">...</span>
       </p>
     </div>
