@@ -1,21 +1,29 @@
-// DrawingCanvas.jsx
-import React, { useRef, useEffect } from "react";
+"use client";
 
-export default function DrawingCanvas({
-  width,
-  height,
-  color,
-  size,
-  onChangeImageBase64,
-  clearRef,
-  undoRef,
-}) {
+import { useEffect, useRef, useImperativeHandle, forwardRef } from "react";
+
+const DrawingCanvas = forwardRef(function DrawingCanvas(
+  {
+    width = 1000,
+    height = 800,
+    color = "#000000",
+    size = 10,
+    onChangeImageBase64,
+    eraser = false,
+    onDrawStateChange = () => {},
+  },
+  ref
+) {
   const canvasRef = useRef(null);
   const ctxRef = useRef(null);
-  const isDrawing = useRef(false);
-  const history = useRef([]);
-  const redoStack = useRef([]);
+  const drawing = useRef(false);
+  const paths = useRef([]); // For undo stack
+  const currentPath = useRef([]);
+  const hasMoved = useRef(false);
 
+  // ---------------------------
+  // Set up canvas
+  // ---------------------------
   useEffect(() => {
     const canvas = canvasRef.current;
     canvas.width = width;
@@ -24,105 +32,201 @@ export default function DrawingCanvas({
     const ctx = canvas.getContext("2d");
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    ctx.strokeStyle = color;
     ctx.lineWidth = size;
-    ctx.fillStyle = "#fff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
+    ctx.strokeStyle = color;
     ctxRef.current = ctx;
-    saveHistory();
 
-    // 🧠 Disable double-tap zoom on iOS
-    document.addEventListener("gesturestart", (e) => e.preventDefault());
-    document.addEventListener("touchmove", (e) => {
-      if (isDrawing.current) e.preventDefault();
-    }, { passive: false });
-  }, []);
+    redraw();
+  }, [width, height]);
 
+  // ---------------------------
+  // Update brush color & size
+  // ---------------------------
   useEffect(() => {
-    if (ctxRef.current) {
-      ctxRef.current.strokeStyle = color;
-      ctxRef.current.lineWidth = size;
-    }
-  }, [color, size]);
+    if (!ctxRef.current) return;
+    ctxRef.current.lineWidth = size;
+    ctxRef.current.strokeStyle = eraser ? "#ffffff" : color;
+  }, [color, size, eraser]);
 
-  const saveHistory = () => {
-    const canvas = canvasRef.current;
-    history.current.push(canvas.toDataURL());
-    redoStack.current = [];
-  };
-
+  // ---------------------------
+  // Utility to get correct cursor/touch positions
+  // ---------------------------
   const getPos = (e) => {
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
+
+    let clientX, clientY;
+
+    if (e.touches && e.touches[0]) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+
     return {
-      offsetX: (clientX - rect.left) * scaleX,
-      offsetY: (clientY - rect.top) * scaleY,
+      x: ((clientX - rect.left) / rect.width) * canvas.width,
+      y: ((clientY - rect.top) / rect.height) * canvas.height,
     };
   };
 
+  // ---------------------------
+  // Start Drawing
+  // ---------------------------
   const handleStart = (e) => {
     e.preventDefault();
-    const { offsetX, offsetY } = getPos(e);
-    isDrawing.current = true;
+
+    drawing.current = true;
+    hasMoved.current = false;
+    currentPath.current = [];
+
+    const pos = getPos(e);
+    currentPath.current.push(pos);
+
     ctxRef.current.beginPath();
-    ctxRef.current.moveTo(offsetX, offsetY);
+    ctxRef.current.moveTo(pos.x, pos.y);
   };
 
+  // ---------------------------
+  // Drawing Move
+  // ---------------------------
   const handleMove = (e) => {
-    if (!isDrawing.current) return;
-    e.preventDefault();
-    const { offsetX, offsetY } = getPos(e);
-    ctxRef.current.lineTo(offsetX, offsetY);
-    ctxRef.current.stroke();
+    if (!drawing.current) return;
+    const pos = getPos(e);
+    hasMoved.current = true;
+
+    currentPath.current.push(pos);
+
+    const ctx = ctxRef.current;
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
   };
 
-  const handleEnd = (e) => {
-    if (!isDrawing.current) return;
-    e.preventDefault();
-    isDrawing.current = false;
-    ctxRef.current.closePath();
-    saveHistory();
-    onChangeImageBase64(canvasRef.current.toDataURL());
+  // ---------------------------
+  // Stop Drawing
+  // ---------------------------
+  const handleEnd = () => {
+    if (!drawing.current) return;
+    drawing.current = false;
+    if (currentPath.current.length === 0) return;
+
+    const isDot = !hasMoved.current || currentPath.current.length === 1;
+    const strokeColor = eraser ? "#ffffff" : color;
+
+    if (isDot) {
+      const point = currentPath.current[0];
+      const ctx = ctxRef.current;
+      ctx.beginPath();
+      ctx.fillStyle = strokeColor;
+      ctx.arc(point.x, point.y, size / 2, 0, Math.PI * 2);
+      ctx.fill();
+
+      paths.current.push({
+        color: strokeColor,
+        size,
+        points: [point],
+        isDot: true,
+      });
+    } else {
+      paths.current.push({
+        color: strokeColor,
+        size,
+        points: [...currentPath.current],
+        isDot: false,
+      });
+    }
+
+    currentPath.current = [];
+    exportImage();
+    onDrawStateChange(paths.current.length > 0);
   };
 
-  const undo = () => {
+  // ---------------------------
+  // Redraw all strokes (used for Undo, resize, etc.)
+  // ---------------------------
+  const redraw = () => {
     const canvas = canvasRef.current;
-    if (history.current.length <= 1) return;
-    const last = history.current.pop();
-    redoStack.current.push(last);
-    const prev = history.current[history.current.length - 1];
-    const img = new Image();
-    img.src = prev;
-    img.onload = () => {
-      ctxRef.current.clearRect(0, 0, canvas.width, canvas.height);
-      ctxRef.current.drawImage(img, 0, 0, canvas.width, canvas.height);
-      onChangeImageBase64(canvas.toDataURL());
-    };
+    const ctx = ctxRef.current;
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    paths.current.forEach((path) => {
+      if (path.isDot && path.points.length) {
+        const point = path.points[0];
+        ctx.beginPath();
+        ctx.fillStyle = path.color;
+        ctx.arc(point.x, point.y, path.size / 2, 0, Math.PI * 2);
+        ctx.fill();
+        return;
+      }
+
+      ctx.beginPath();
+      ctx.lineWidth = path.size;
+      ctx.strokeStyle = path.color;
+
+      path.points.forEach((p, i) => {
+        if (i === 0) {
+          ctx.moveTo(p.x, p.y);
+        } else {
+          ctx.lineTo(p.x, p.y);
+        }
+      });
+
+      ctx.stroke();
+    });
+
+    exportImage();
+    onDrawStateChange(paths.current.length > 0);
   };
 
-  // expose undo
-  if (undoRef) undoRef.current = { undo };
+  // ---------------------------
+  // Public functions: Undo + Clear
+  // ---------------------------
+  useImperativeHandle(ref, () => ({
+    undo: () => {
+      paths.current.pop();
+      redraw();
+    },
+    clear: () => {
+      paths.current = [];
+      redraw();
+    },
+  }));
+
+  // ---------------------------
+  // Export to Base64
+  // ---------------------------
+  const exportImage = () => {
+    const base64 = canvasRef.current.toDataURL("image/png");
+    onChangeImageBase64(base64);
+  };
+
+  // ---------------------------
+  // Disable scrolling while drawing on mobile
+  // ---------------------------
+  useEffect(() => {
+    const preventScroll = (e) => {
+      if (drawing.current) e.preventDefault();
+    };
+    document.addEventListener("touchmove", preventScroll, { passive: false });
+    return () => document.removeEventListener("touchmove", preventScroll);
+  }, []);
 
   return (
-    <div className="w-full h-full flex items-center justify-center">
-      <canvas
-        ref={canvasRef}
-        className="max-w-full max-h-[80vh] rounded-xl touch-none"
-        style={{ aspectRatio: "4/3" }}
-        onMouseDown={handleStart}
-        onMouseMove={handleMove}
-        onMouseUp={handleEnd}
-        onMouseLeave={handleEnd}
-        onTouchStart={handleStart}
-        onTouchMove={handleMove}
-        onTouchEnd={handleEnd}
-      />
-    </div>
+    <canvas
+      ref={canvasRef}
+      className="touch-none select-none bg-white rounded-xl"
+      onMouseDown={handleStart}
+      onMouseMove={handleMove}
+      onMouseUp={handleEnd}
+      onMouseLeave={handleEnd}
+      onTouchStart={handleStart}
+      onTouchMove={handleMove}
+      onTouchEnd={handleEnd}
+    />
   );
+});
 
-}
+export default DrawingCanvas;
