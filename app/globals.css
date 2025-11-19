@@ -2,9 +2,22 @@
 @import "tailwindcss/theme";
 @import "tailwindcss/utilities";
 
+html, body {
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  touch-action: manipulation;
+}
+
 
 .font-handdrawn {
   font-family: var(--font-handdrawn), cursive;
+}
+
+.gochi-hand-regular {
+  font-family: var(--font-handdrawn), "Gochi Hand", cursive;
+  font-weight: 400;
+  font-style: normal;
 }
 
 @keyframes chalkLoop {
@@ -92,19 +105,6 @@
     padding-top: 1rem;
   }
 }
-@keyframes wipe {
-  0% {
-    clip-path: circle(0% at 50% 50%);
-    opacity: 1;
-  }
-  60% {
-    clip-path: circle(150% at 50% 50%);
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-  }
-}
 @keyframes pulse {
   0%, 100% { opacity: 0.8; transform: scale(1); }
   50% { opacity: 1; transform: scale(1.05); }
@@ -178,4 +178,3 @@
 .animate-chalkPop {
   animation: chalkPop 0.35s ease-out forwards;
 }
-
