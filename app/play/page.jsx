@@ -11,6 +11,16 @@ import {
 } from "lucide-react";
 import DrawingCanvas from "@/components/DrawingCanvas";
 
+const COLOUR_LABELS = {
+  "#000000": "Black",
+  "#e63946": "Red",
+  "#457b9d": "Blue",
+  "#2a9d8f": "Green",
+  "#f4a261": "Orange",
+  "#f9c74f": "Yellow",
+};
+const SLOT_REVEAL_DURATION = 1200;
+
 
 export default function PlayPage() {
   const [imageBase64, setImageBase64] = useState(null);
@@ -18,15 +28,12 @@ export default function PlayPage() {
   const [category, setCategory] = useState("—");
   const [categoryMatch, setCategoryMatch] = useState(false);
   const [colorMatch, setColorMatch] = useState(false);
-  const [styleScore, setStyleScore] = useState(0);
   const [attempt, setAttempt] = useState(1);
   const [loading, setLoading] = useState(false);
   const [showWin, setShowWin] = useState(false);
   const [showGameOver, setShowGameOver] = useState(false);
   const [finalScore, setFinalScore] = useState(0);
   const [brushColor, setBrushColor] = useState("#000000");
-  const [expectedCategory, setExpectedCategory] = useState("");
-  const [shapeMatch, setShapeMatch] = useState(false);
   const [showIntro, setShowIntro] = useState(true);
   const [introLeaving, setIntroLeaving] = useState(false);
   const closeIntro = () => {
@@ -36,10 +43,23 @@ export default function PlayPage() {
   const [hint, setHint] = useState("");
   const [showHint, setShowHint] = useState(false);
   const [hintLocation, setHintLocation] = useState("");
+  const [incomingHint, setIncomingHint] = useState("");
+  const [incomingHintLocation, setIncomingHintLocation] = useState("");
+  const [latestHintAttempt, setLatestHintAttempt] = useState(null);
+  const [displayedHintAttempt, setDisplayedHintAttempt] = useState(null);
   const [mode, setMode] = useState("easy");
   const [timeLeft, setTimeLeft] = useState(null);
   const [timePenaltyMessage, setTimePenaltyMessage] = useState("");
+  const [hasSubmitted, setHasSubmitted] = useState(false);
+  const [hintPaidAttempt, setHintPaidAttempt] = useState(null);
+  const [submittedColourHex, setSubmittedColourHex] = useState("");
+  const [guessCorrect, setGuessCorrect] = useState(false);
+  const [statusRevealStage, setStatusRevealStage] = useState(3);
+  const [shouldTriggerReveal, setShouldTriggerReveal] = useState(false);
   const undoRef = useRef(null);
+  const revealTimeouts = useRef([]);
+  const winDelayRef = useRef(null);
+  const redirectRef = useRef(null);
   const maxAttempts = 5;
   const doUndo = () => undoRef.current?.undo && undoRef.current.undo();
   const palette = ["#000000", "#e63946", "#457b9d", "#2a9d8f", "#f4a261", "#f9c74f"];
@@ -59,28 +79,47 @@ export default function PlayPage() {
     </div>
   );
 
-  const [targetInfo, setTargetInfo] = useState(null);
   const hardMode = mode === "hard";
+  const normalizedSubmittedColour = submittedColourHex?.toLowerCase() || "";
+  const submittedColourLabel =
+    hasSubmitted && normalizedSubmittedColour
+      ? COLOUR_LABELS[normalizedSubmittedColour] || normalizedSubmittedColour.toUpperCase()
+      : "Colour";
+  const hintAvailable = Boolean(incomingHint);
+  const slotPlaceholder = <span className="slot-spin inline-block text-white">???</span>;
+  const startSlotReveal = useCallback(() => {
+    revealTimeouts.current.forEach((id) => clearTimeout(id));
+    revealTimeouts.current = [];
+    setStatusRevealStage(0);
+    const delays = [350, 700, 1050];
+    delays.forEach((delay, index) => {
+      const timeout = setTimeout(() => {
+        setStatusRevealStage(index + 1);
+      }, delay);
+      revealTimeouts.current.push(timeout);
+    });
+  }, []);
 
-  useEffect(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    const lastPlayDate = localStorage.getItem("lastPlayDate");
-    const activePlayDate = localStorage.getItem("activePlayDate");
-    const override = localStorage.getItem("allowMultiplePlays") === "true";
+useEffect(() => {
+  const today = new Date().toISOString().slice(0, 10);
+  const lastPlayDate = localStorage.getItem("lastPlayDate");
+  const activePlayDate = localStorage.getItem("activePlayDate");
+  const override = localStorage.getItem("allowMultiplePlays") === "true";
     if (!override && lastPlayDate === today && activePlayDate !== today) {
       window.location.href = "/";
       return;
     }
-    if (activePlayDate !== today) {
-      localStorage.setItem("activePlayDate", today);
-    }
-  }, []);
+  if (activePlayDate !== today) {
+    localStorage.setItem("activePlayDate", today);
+  }
+}, []);
 
 useEffect(() => {
-  fetch("https://drawdle-backend-v1.onrender.com/target")
-    .then((res) => res.json())
-    .then((data) => setTargetInfo(data))
-    .catch((err) => console.error("Failed to fetch target:", err));
+  return () => {
+    revealTimeouts.current.forEach((id) => clearTimeout(id));
+    if (winDelayRef.current) clearTimeout(winDelayRef.current);
+    if (redirectRef.current) clearTimeout(redirectRef.current);
+  };
 }, []);
 
 useEffect(() => {
@@ -97,6 +136,13 @@ useEffect(() => {
   }
   setTimeLeft(10);
 }, [hardMode, attempt, showWin, showGameOver]);
+
+useEffect(() => {
+  if (!loading && shouldTriggerReveal) {
+    startSlotReveal();
+    setShouldTriggerReveal(false);
+  }
+}, [loading, shouldTriggerReveal, startSlotReveal]);
 
 useEffect(() => {
   if (!hardMode || showWin || showGameOver) return;
@@ -121,6 +167,8 @@ const handleTimeExpired = useCallback(() => {
     setTimeLeft(10);
     return nextAttempt;
   });
+  setHintPaidAttempt(null);
+  setShowHint(false);
 }, [maxAttempts]);
 
 useEffect(() => {
@@ -165,12 +213,18 @@ const submitDrawing = async () => {
     setCategory(data.category || "—");
     setCategoryMatch(categoryMatches);
     setColorMatch(Boolean(data.color_match));
-    setStyleScore(Number(data.style_score) || 0);
-    setExpectedCategory(data.expected_category || "");
-    setShapeMatch(Boolean(data.shape_match));
-    setHint(data.hint || "");
+    setSubmittedColourHex((brushColor || "").toLowerCase());
+    setIncomingHint(data.hint || "");
+    setIncomingHintLocation(data.hint_location || "");
+    setLatestHintAttempt(attemptNumber);
+    setDisplayedHintAttempt(null);
+    setHint("");
     setShowHint(false);
-    setHintLocation(attemptNumber >= 3 ? data.hint_location || "" : "");
+    setHintLocation("");
+    setHasSubmitted(true);
+    setHintPaidAttempt(null);
+    setGuessCorrect(success);
+    setShouldTriggerReveal(true);
 
     const scoreFromApi =
       typeof data.score === "number"
@@ -209,8 +263,14 @@ if (success) {
     // Handle win / lose logic
     if (success) {
       setFinalScore(scoreFromApi);
-      setShowWin(true);
-      setTimeout(() => (window.location.href = "/leaderboard"), 2000);
+      if (winDelayRef.current) clearTimeout(winDelayRef.current);
+      if (redirectRef.current) clearTimeout(redirectRef.current);
+      winDelayRef.current = setTimeout(() => {
+        setShowWin(true);
+        redirectRef.current = setTimeout(() => {
+          window.location.href = "/leaderboard";
+        }, 2000);
+      }, SLOT_REVEAL_DURATION);
     } else if (attempt >= maxAttempts) {
       setFinalScore(scoreFromApi);
       setShowGameOver(true);
@@ -223,6 +283,35 @@ if (success) {
     alert("Submission failed.");
   } finally {
     setLoading(false);
+  }
+};
+
+const handleHintToggle = () => {
+  if (!incomingHint) return;
+
+  if (displayedHintAttempt !== latestHintAttempt) {
+    const hintStage = latestHintAttempt ?? 0;
+    setHint(incomingHint);
+    setHintLocation(hintStage >= 3 ? incomingHintLocation : "");
+    setDisplayedHintAttempt(latestHintAttempt);
+  }
+
+  if (!showHint) {
+    if (hintPaidAttempt === attempt) {
+      setShowHint(true);
+      return;
+    }
+    if (attempt >= maxAttempts) {
+      setTimePenaltyMessage("No attempts left to trade for a hint.");
+      return;
+    }
+    const nextAttempt = attempt + 1;
+    setAttempt(nextAttempt);
+    setHintPaidAttempt(nextAttempt);
+    setTimePenaltyMessage("Hint used — attempt +1.");
+    setShowHint(true);
+  } else {
+    setShowHint(false);
   }
 };
 
@@ -255,8 +344,8 @@ if (success) {
 
             <ul className="text-lg sm:text-2xl text-left leading-relaxed space-y-3 sm:space-y-4 mx-auto max-w-xl">
               <li>🧠 The AI is trying its best to guess your masterpiece!</li>
-              <li>🕵️ Watch the category, colour, and shape lights — they turn green when you’re nailing it.</li>
-              <li>🔮 After your first try, tap the Hint button for a cheeky little clue.</li>
+              <li>🕵️ Watch the category, colour, and Ai Guess lights — they turn green when you’re nailing it.</li>
+              <li>🔮 After your first try, tap the Hint button for a cheeky little clue but it will cost you.</li>
               <li>🚨 You’ve got 5 attempts to crack the secret prompt — make ’em count!</li>
               <li>🌈 Style points are up for grabs, so jazz up that drawing!</li>
             </ul>
@@ -276,31 +365,27 @@ if (success) {
 
       <div className="relative z-10 flex w-full justify-center px-3 py-4 sm:py-6">
         <div className="flex min-h-[calc(100dvh-2rem)] w-full max-w-6xl flex-col gap-4 sm:gap-6">
-          {/* Top bar */}
-          <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-center text-2xl font-bold sm:text-left sm:text-3xl">
-              Attempt {attempt} / {maxAttempts}
-              {hardMode && timeLeft !== null && (
-                <span className="ml-2 inline-block text-xl font-normal sm:ml-3">
-                  · {String(timeLeft).padStart(2, "0")}s
-                </span>
-              )}
-            </div>
-
-            <div className="hidden sm:flex">
-              <PaletteControls />
-            </div>
-          </header>
-
           {/* Canvas & feedback area */}
           <main className="flex flex-1 w-full flex-col items-center gap-4 sm:gap-6">
-            {/* Colour palette (mobile) */}
-            <div className="w-full flex justify-center sm:hidden">
-              <PaletteControls className="justify-center flex-wrap" />
-            </div>
+            <div className="w-full max-w-4xl mx-auto flex flex-col gap-3 sm:gap-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-2xl font-bold">
+                <div className="text-center sm:text-left">
+                  Attempt {attempt} / {maxAttempts}
+                  {hardMode && timeLeft !== null && (
+                    <span className="ml-2 inline-block text-xl font-normal sm:ml-3">
+                      · {String(timeLeft).padStart(2, "0")}s
+                    </span>
+                  )}
+                </div>
+                <div className="hidden sm:flex">
+                  <PaletteControls />
+                </div>
+              </div>
+              <div className="w-full flex justify-center sm:hidden">
+                <PaletteControls className="justify-center flex-wrap" />
+              </div>
 
-            <div className="w-full">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl mx-auto aspect-[3/4] sm:aspect-video flex items-center justify-center overflow-hidden">
+              <div className="relative bg-white rounded-2xl shadow-2xl w-full aspect-[3/4] sm:aspect-video flex items-center justify-center overflow-hidden">
                 <DrawingCanvas
                   ref={undoRef}
                   width={1000}
@@ -310,52 +395,68 @@ if (success) {
                   onChangeImageBase64={setImageBase64}
                   onDrawStateChange={setHasDrawing}
                 />
+                {loading && (
+                  <div className="absolute inset-0 bg-[#2d8b57]/90 backdrop-blur-sm flex flex-col items-center justify-center gap-3 z-20 text-center">
+                    <div className="flex items-center gap-3 text-3xl sm:text-4xl font-bold tracking-wide">
+                      <BotIcon className="w-10 h-10 animate-pulse" />
+                      <span>Analyzing…</span>
+                    </div>
+                    <p className="text-base uppercase tracking-[0.3em] text-white/80">
+                      Hang tight
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Status indicators */}
             <div className="flex w-full flex-wrap justify-center gap-5 sm:gap-12 items-center text-2xl sm:text-4xl font-semibold tracking-wider">
-              {[
-                {
-                  ok: category?.toLowerCase() === expectedCategory?.toLowerCase(),
-                  label: "Category",
-                },
-                { ok: colorMatch, label: "Colour" },
-                { ok: shapeMatch, label: "Shape" },
-              ].map((x) => (
-                <div
-                  key={x.label}
-                  className={`uppercase ${
-                    x.ok ? "text-green-300" : "text-red-300"
-                  }`}
-                >
-                  {x.label}
-                </div>
-              ))}
+              <div
+                className={`uppercase ${categoryMatch ? "text-green-300" : "text-red-300"}`}
+              >
+                {!loading && statusRevealStage >= 1
+                  ? hasSubmitted && category && category !== "—"
+                    ? category
+                    : "Category"
+                  : slotPlaceholder}
+              </div>
+              <div
+                className={`uppercase ${guessCorrect ? "text-green-300" : "text-red-300"}`}
+              >
+                {!loading && statusRevealStage >= 3
+                  ? hasSubmitted && aiGuess && aiGuess !== "—"
+                    ? aiGuess
+                    : "AI Guess:"
+                  : slotPlaceholder}
+              </div>
+              <div
+                className={`uppercase ${colorMatch ? "text-green-300" : "text-red-300"}`}
+              >
+                {!loading && statusRevealStage >= 2 ? submittedColourLabel : slotPlaceholder}
+              </div>
             </div>
 
             {/* AI feedback */}
             <div className="w-full max-w-2xl text-center text-2xl sm:text-3xl flex flex-col items-center gap-2">
-              <p className="leading-snug">
-                <span className="font-bold">AI Guess:</span> {aiGuess}
-              </p>
-              <p className="opacity-90">Category: {category}</p>
               <div className="flex flex-col sm:flex-row gap-3 mt-1">
                 <button
                   type="button"
                   className={`flex items-center gap-2 px-4 py-2 rounded-full border-2 border-white/70 text-xl ${
-                    hint ? "opacity-90" : "opacity-50 cursor-not-allowed"
+                    hintAvailable ? "opacity-90" : "opacity-50 cursor-not-allowed"
                   }`}
-                  onClick={() => hint && setShowHint((prev) => !prev)}
-                  disabled={!hint}
+                  onClick={handleHintToggle}
+                  disabled={!hintAvailable}
                 >
                   <InfoIcon className="w-5 h-5" />
                   <span>Hint</span>
                 </button>
+                <p className="text-base opacity-80 text-center sm:text-left">
+                  Using a hint costs one attempt.
+                </p>
               </div>
               {showHint && hint && (
                 <p className="text-lg sm:text-2xl max-w-md text-center mt-1">
-                  {hintLocation ? `${hint} ` : hint}
+                  {hintLocation ? `${hint} — Likely found: ${hintLocation}` : hint}
                 </p>
               )}
               {timePenaltyMessage && (
@@ -433,21 +534,6 @@ if (success) {
           </div>
         </div>
       )}
-
-      {loading && (
-        <div className="fixed inset-0 bg-[#000000b0] backdrop-blur-sm flex flex-col items-center justify-center z-50 text-white font-handdrawn">
-          <div className="absolute inset-0 bg-[url('/chalk-texture.png')] opacity-20 mix-blend-overlay pointer-events-none"></div>
-          <div className="flex flex-col items-center justify-center gap-4 animate-[pulse_1.2s_ease-in-out_infinite]">
-            <div className="w-28 h-28 sm:w-32 sm:h-32 bg-white text-[#2d8b57] rounded-full flex items-center justify-center shadow-2xl border-4 border-white/70">
-              <BotIcon className="w-16 h-16 sm:w-20 sm:h-20" />
-            </div>
-            <p className="text-4xl sm:text-5xl tracking-wide">
-              Thinking<span className="animate-bounce">...</span>
-            </p>
-          </div>
-        </div>
-      )}
-
       {/* Game over modal */}
       {showGameOver && (
         <div className="fixed inset-0 bg-[#000000b0] flex flex-col items-center justify-center z-50 text-white font-handdrawn">
