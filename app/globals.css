@@ -178,3 +178,23 @@ html, body {
 .animate-chalkPop {
   animation: chalkPop 0.35s ease-out forwards;
 }
+
+@keyframes slotSpin {
+  0% {
+    transform: translateY(4px);
+    opacity: 0.6;
+  }
+  50% {
+    transform: translateY(-6px);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(4px);
+    opacity: 0.6;
+  }
+}
+
+.slot-spin {
+  animation: slotSpin 0.5s ease-in-out infinite;
+  letter-spacing: 0.15em;
+}
