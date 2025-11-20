@@ -1,12 +1,22 @@
 "use client";
 import { useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 export default function StartPage() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [mode, setMode] = useState("easy");
+  const todayKey = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const [overrideLimit, setOverrideLimit] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("allowMultiplePlays") === "true";
+  });
+  const [playLocked, setPlayLocked] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const lastPlay = localStorage.getItem("lastPlayDate");
+    return lastPlay === todayKey;
+  });
 
   useEffect(() => {
     // trigger fade-in animation after mount
@@ -14,12 +24,25 @@ export default function StartPage() {
     return () => clearTimeout(timer);
   }, []);
 
-const startGame = () => {
-  if (!name.trim()) return alert("Enter your name!");
-  localStorage.setItem("playerName", name);
-  localStorage.setItem("gameMode", mode);
-  router.push("/play");
-};
+  useEffect(() => {
+    localStorage.setItem("allowMultiplePlays", overrideLimit ? "true" : "false");
+  }, [overrideLimit]);
+
+  const startGame = () => {
+    if (!name.trim()) return alert("Enter your name!");
+
+    const lastPlay = localStorage.getItem("lastPlayDate");
+    if (!overrideLimit && lastPlay === todayKey) {
+      return alert("You've already played today's challenge. Come back tomorrow!");
+    }
+
+    localStorage.setItem("playerName", name);
+    localStorage.setItem("gameMode", mode);
+    localStorage.setItem("lastPlayDate", todayKey);
+    localStorage.setItem("activePlayDate", todayKey);
+    setPlayLocked(true);
+    router.push("/play");
+  };
 
 
   return (
@@ -81,12 +104,30 @@ const startGame = () => {
           </p>
         </div>
 
+        {!overrideLimit && playLocked && (
+          <p className="text-red-200 text-center text-lg max-w-sm">
+            You&apos;ve already played today. Come back tomorrow or enable the override below for testing.
+          </p>
+        )}
+
         <button
           onClick={startGame}
           className="text-4xl font-bold underline decoration-[3px] underline-offset-4 hover:scale-110 transition-transform animate-bounce"
         >
           START
         </button>
+
+        <div className="flex flex-col items-center gap-2 text-sm opacity-80">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={overrideLimit}
+              onChange={(e) => setOverrideLimit(e.target.checked)}
+              className="w-4 h-4 accent-[#2d8b57]"
+            />
+            <span>Override daily limit (dev use only)</span>
+          </label>
+        </div>
       </div>
     </div>
     
