@@ -56,6 +56,8 @@ export default function PlayPage() {
   const [guessCorrect, setGuessCorrect] = useState(false);
   const [statusRevealStage, setStatusRevealStage] = useState(3);
   const [shouldTriggerReveal, setShouldTriggerReveal] = useState(false);
+  const [targetUseHint, setTargetUseHint] = useState("");
+  const [targetHintLoading, setTargetHintLoading] = useState(true);
   const undoRef = useRef(null);
   const revealTimeouts = useRef([]);
   const winDelayRef = useRef(null);
@@ -127,6 +129,36 @@ useEffect(() => {
   if (storedMode === "hard" || storedMode === "easy") {
     setMode(storedMode);
   }
+}, []);
+
+useEffect(() => {
+  let active = true;
+  const fetchHint = async () => {
+    try {
+      const res = await fetch("https://drawdle-backend-v1.onrender.com/target");
+      const data = await res.json();
+      if (!active) return;
+      const usageHint =
+        data.use_for ||
+        data.use_hint ||
+        data.usage_hint ||
+        data.use_case ||
+        data.usecase ||
+        data.public_name ||
+        data.location ||
+        "";
+      setTargetUseHint(usageHint);
+    } catch (err) {
+      console.error("Failed to fetch daily hint:", err);
+      if (active) setTargetUseHint("");
+    } finally {
+      if (active) setTargetHintLoading(false);
+    }
+  };
+  fetchHint();
+  return () => {
+    active = false;
+  };
 }, []);
 
 useEffect(() => {
@@ -368,17 +400,19 @@ const handleHintToggle = () => {
           {/* Canvas & feedback area */}
           <main className="flex flex-1 w-full flex-col items-center gap-4 sm:gap-6">
             <div className="w-full max-w-4xl mx-auto flex flex-col gap-3 sm:gap-4">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-2xl font-bold">
-                <div className="text-center sm:text-left">
-                  Attempt {attempt} / {maxAttempts}
-                  {hardMode && timeLeft !== null && (
-                    <span className="ml-2 inline-block text-xl font-normal sm:ml-3">
-                      · {String(timeLeft).padStart(2, "0")}s
-                    </span>
-                  )}
-                </div>
-                <div className="hidden sm:flex">
-                  <PaletteControls />
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-2xl font-bold">
+                  <div className="text-center sm:text-left">
+                    Attempt {attempt} / {maxAttempts}
+                    {hardMode && timeLeft !== null && (
+                      <span className="ml-2 inline-block text-xl font-normal sm:ml-3">
+                        · {String(timeLeft).padStart(2, "0")}s
+                      </span>
+                    )}
+                  </div>
+                  <div className="hidden sm:flex">
+                    <PaletteControls />
+                  </div>
                 </div>
               </div>
               <div className="w-full flex justify-center sm:hidden">
@@ -395,6 +429,18 @@ const handleHintToggle = () => {
                   onChangeImageBase64={setImageBase64}
                   onDrawStateChange={setHasDrawing}
                 />
+                {(targetUseHint || !targetHintLoading) && (
+                  <div className="absolute top-2 left-1/2 -translate-x-1/2 w-[92%] bg-[#2d8b57cc] text-white text-center text-base sm:text-lg py-2.5 px-4 rounded-xl border border-white/50 shadow-lg">
+                    <p className="text-[0.7rem] sm:text-sm font-semibold uppercase tracking-[0.4em] text-white/80 mb-1">
+                      Daily Use Hint
+                    </p>
+                    <p className="leading-snug text-lg sm:text-2xl">
+                      {targetHintLoading
+                        ? "Fetching hint..."
+                        : targetUseHint || "Hint unavailable for today."}
+                    </p>
+                  </div>
+                )}
                 {loading && (
                   <div className="absolute inset-0 bg-[#2d8b57]/90 backdrop-blur-sm flex flex-col items-center justify-center gap-3 z-20 text-center">
                     <div className="flex items-center gap-3 text-3xl sm:text-4xl font-bold tracking-wide">
@@ -436,7 +482,7 @@ const handleHintToggle = () => {
               </div>
             </div>
 
-            {/* AI feedback */}
+            {/* Hint / status text */}
             <div className="w-full max-w-2xl text-center text-2xl sm:text-3xl flex flex-col items-center gap-2">
               <div className="flex flex-col sm:flex-row gap-3 mt-1">
                 <button
@@ -463,11 +509,9 @@ const handleHintToggle = () => {
                 <p className="text-base text-red-200 mt-1">{timePenaltyMessage}</p>
               )}
             </div>
-          </main>
 
-          {/* Controls */}
-          <footer className="mt-auto flex w-full justify-center pb-3 sm:pb-5">
-            <div className="flex flex-wrap justify-center gap-3 sm:gap-14 items-center w-full max-w-3xl">
+            {/* Controls moved up */}
+            <div className="flex flex-wrap justify-center gap-3 sm:gap-14 items-center w-full max-w-3xl mt-2">
               {/* Undo */}
               <div className="flex flex-col items-center gap-1">
                 <button
@@ -513,7 +557,7 @@ const handleHintToggle = () => {
                 <span className="text-lg">Submit</span>
               </div>
             </div>
-          </footer>
+          </main>
         </div>
       </div>
 
