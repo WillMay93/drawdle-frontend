@@ -388,7 +388,7 @@ if (success) {
                     <p className="leading-snug text-lg sm:text-2xl">
                       {hint
                         ? hintLocation
-                          ? `${hint} — Likely found: ${hintLocation}`
+                          ? `${hint}`
                           : hint
                         : "No hint available yet."}
                     </p>
