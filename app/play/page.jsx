@@ -52,6 +52,7 @@ export default function PlayPage() {
   const [statusRevealStage, setStatusRevealStage] = useState(1);
   const [targetUseHint, setTargetUseHint] = useState("");
   const [targetHintLoading, setTargetHintLoading] = useState(true);
+  const [hintOpen, setHintOpen] = useState(true);
   const undoRef = useRef(null);
   const revealTimeoutRef = useRef(null);
   const winDelayRef = useRef(null);
@@ -195,6 +196,22 @@ useEffect(() => {
   localStorage.removeItem("activePlayDate");
 }, [showWin, showGameOver]);
 
+useEffect(() => {
+  const shouldLock = window.innerWidth < 640;
+  if (!shouldLock) return;
+  const prevOverflow = document.body.style.overflow;
+  const prevPosition = document.body.style.position;
+  const prevWidth = document.body.style.width;
+  document.body.style.overflow = "hidden";
+  document.body.style.position = "fixed";
+  document.body.style.width = "100%";
+  return () => {
+    document.body.style.overflow = prevOverflow;
+    document.body.style.position = prevPosition;
+    document.body.style.width = prevWidth;
+  };
+}, []);
+
 const submitDrawing = async () => {
   if (!hasDrawing) return alert("Draw something first!");
   setTimePenaltyMessage("");
@@ -205,7 +222,7 @@ const submitDrawing = async () => {
   const attemptNumber = attempt;
 
   try {
-    const res = await fetch("https://drawdle-backend-v1.onrender.com/submit", {
+    const res = await fetch("http://127.0.0.1:5050/submit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ image_base64: imageBase64, attempt: attemptNumber, colour: brushColor }),
@@ -254,7 +271,7 @@ const submitDrawing = async () => {
 // Save leaderboard entry ONLY when guessed correctly
 if (success) {
   try {
-    await fetch("https://drawdle-backend-v1.onrender.com/leaderboard", {
+    await fetch("http://127.0.0.1:5050/leaderboard", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -346,28 +363,21 @@ if (success) {
       {/* Chalk texture */}
       <div className="absolute inset-0 bg-[url('/chalk-texture.png')] opacity-15 mix-blend-overlay pointer-events-none"></div>
 
-      <div className="relative z-10 flex w-full justify-center px-3 py-4 sm:py-6">
-        <div className="flex min-h-[calc(100dvh-2rem)] w-full max-w-6xl flex-col gap-4 sm:gap-6">
+      <div className="relative z-10 flex w-full justify-center px-3 py-2 sm:py-6">
+        <div className="flex min-h-[calc(100dvh-2rem)] w-full max-w-6xl flex-col gap-3 sm:gap-6">
           {/* Canvas & feedback area */}
-          <main className="flex flex-1 w-full flex-col items-center gap-4 sm:gap-6">
-            <div className="w-full max-w-4xl mx-auto flex flex-col gap-3 sm:gap-4">
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-2xl font-bold">
-                  <div className="text-center sm:text-left">
-                    Attempt {attempt} / {maxAttempts}
-                    {hardMode && timeLeft !== null && (
-                      <span className="ml-2 inline-block text-xl font-normal sm:ml-3">
-                        · {String(timeLeft).padStart(2, "0")}s
-                      </span>
-                    )}
-                  </div>
-                  <div className="hidden sm:flex">
-                    <PaletteControls />
-                  </div>
+          <main className="flex flex-1 w-full flex-col items-center gap-3 sm:gap-6">
+            <div className="w-full max-w-4xl mx-auto flex flex-col gap-2 sm:gap-4">
+              <div className="flex items-center justify-between gap-3 text-xl sm:text-2xl font-bold">
+                <div className="text-left flex-1">
+                  Attempt {attempt} / {maxAttempts}
+                  {hardMode && timeLeft !== null && (
+                    <span className="ml-2 inline-block text-lg font-normal sm:ml-3">
+                      · {String(timeLeft).padStart(2, "0")}s
+                    </span>
+                  )}
                 </div>
-              </div>
-              <div className="w-full flex justify-center sm:hidden">
-                <PaletteControls className="justify-center flex-wrap" />
+                <PaletteControls className="justify-end flex-shrink-0" />
               </div>
 
               <div className="relative bg-white rounded-2xl shadow-2xl w-full aspect-[3/4] sm:aspect-video flex items-center justify-center overflow-hidden">
@@ -380,32 +390,39 @@ if (success) {
                   onChangeImageBase64={setImageBase64}
                   onDrawStateChange={setHasDrawing}
                 />
-                {showHint ? (
-                  <div className="absolute top-2 left-1/2 -translate-x-1/2 w-[92%] bg-[#2d8b57cc] text-white text-center text-base sm:text-lg py-2.5 px-4 rounded-xl border border-white/50 shadow-lg">
-                    <p className="text-[0.7rem] sm:text-sm font-semibold uppercase tracking-[0.4em] text-white/80 mb-1">
-                      Latest Hint
-                    </p>
-                    <p className="leading-snug text-lg sm:text-2xl">
-                      {hint
-                        ? hintLocation
-                          ? `${hint}`
-                          : hint
-                        : "No hint available yet."}
-                    </p>
-                  </div>
-                ) : (
-                  (targetUseHint || !targetHintLoading) && (
-                    <div className="absolute top-2 left-1/2 -translate-x-1/2 w-[92%] bg-[#2d8b57cc] text-white text-center text-base sm:text-lg py-2.5 px-4 rounded-xl border border-white/50 shadow-lg">
-                      <p className="text-[0.7rem] sm:text-sm font-semibold uppercase tracking-[0.4em] text-white/80 mb-1">
-                        Daily Use Hint
-                      </p>
-                      <p className="leading-snug text-lg sm:text-2xl">
-                        {targetHintLoading
-                          ? "Fetching hint..."
-                          : targetUseHint || "Hint unavailable for today."}
-                      </p>
+
+                {(targetUseHint || !targetHintLoading || showHint) && (
+                  <div
+                    className={`absolute top-2 left-1/2 -translate-x-1/2 w-[92%] text-white transition-all duration-200 ${
+                      hintOpen ? "opacity-100" : "opacity-90"
+                    }`}
+                  >
+                    <div
+                      className={`relative bg-[#2d8b57cc] border border-white/50 shadow-lg rounded-xl px-4 ${
+                        hintOpen ? "py-3" : "py-5"
+                      } flex flex-col items-center text-center`}
+                    >
+                      <button
+                        onClick={() => setHintOpen((v) => !v)}
+                        className="absolute right-2.5 top-2 bg-white/80 text-[#2d8b57] px-2 py-1 rounded-md text-[0.65rem] font-bold tracking-[0.2em] uppercase shadow-sm hover:scale-[1.02] transition-transform"
+                      >
+                        {hintOpen ? "Hide" : "Hint"}
+                      </button>
+                      {hintOpen && (
+                        <p className="leading-snug text-lg sm:text-2xl text-center px-1 text-white mt-2">
+                          {showHint
+                            ? hint
+                              ? hintLocation
+                                ? `${hint} — Likely found: ${hintLocation}`
+                                : hint
+                              : "No hint available yet."
+                            : targetHintLoading
+                            ? "Fetching hint..."
+                            : targetUseHint || "Hint unavailable for today."}
+                        </p>
+                      )}
                     </div>
-                  )
+                  </div>
                 )}
                 {loading && (
                   <div className="absolute inset-0 bg-[#2d8b57]/90 backdrop-blur-sm flex flex-col items-center justify-center gap-3 z-20 text-center">
@@ -430,42 +447,44 @@ if (success) {
             </div>
 
             {/* AI guess / history / controls */}
-            <div className="w-full max-w-4xl flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-5 text-2xl sm:text-4xl font-semibold tracking-wider -mt-1 sm:-mt-2">
-              <div className="flex flex-col text-left">
-                <div
-                  className={`uppercase ${
-                    guessCorrect ? "text-green-300" : "text-red-300"
-                  }`}
-                >
-                  {statusRevealStage === 1 && hasSubmitted && aiGuess && aiGuess !== "—"
-                    ? aiGuess
-                    : slotPlaceholder}
-                </div>
-                <span className="mt-1 text-[0.65rem] sm:text-xs uppercase tracking-[0.4em] text-white/80">
-                  AI Guess
-                </span>
-                {timePenaltyMessage && (
-                  <p className="text-base text-red-200 mt-2">{timePenaltyMessage}</p>
-                )}
-              </div>
-
-              <div className="flex-1 flex flex-col text-left">
-                <p className="text-sm uppercase tracking-[0.4em] text-white/70 mb-1">
-                  Previous Guesses
-                </p>
-                <div className="flex flex-wrap gap-2 text-base sm:text-xl font-normal">
-                  {guessHistory.length === 0 ? (
-                    <span className="text-white/50 text-sm">No guesses yet</span>
-                  ) : (
-                    guessHistory.map((guess, idx) => (
-                      <span
-                        key={`${guess}-${idx}`}
-                        className="px-3 py-1 rounded-full border border-white/50 text-white/80 text-sm sm:text-base"
-                      >
-                        {guess}
-                      </span>
-                    ))
+            <div className="w-full max-w-4xl flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-5 text-2xl sm:text-4xl font-semibold tracking-wider mt-0 sm:-mt-2">
+              <div className="w-full flex flex-row sm:flex-row items-start gap-3 sm:gap-5 flex-1">
+                <div className="flex flex-col text-left">
+                  <div
+                    className={`uppercase ${
+                      guessCorrect ? "text-green-300" : "text-red-300"
+                    }`}
+                  >
+                    {statusRevealStage === 1 && hasSubmitted && aiGuess && aiGuess !== "—"
+                      ? aiGuess
+                      : slotPlaceholder}
+                  </div>
+                  <span className="mt-1 text-[0.65rem] sm:text-xs uppercase tracking-[0.4em] text-white/80">
+                    AI Guess
+                  </span>
+                  {timePenaltyMessage && (
+                    <p className="text-base text-red-200 mt-2">{timePenaltyMessage}</p>
                   )}
+                </div>
+
+                <div className="flex-1 flex flex-col text-left">
+                  <p className="text-sm uppercase tracking-[0.4em] text-white/70 mb-1">
+                    Previous Guesses
+                  </p>
+                  <div className="flex flex-wrap gap-2 text-base sm:text-xl font-normal">
+                    {guessHistory.length === 0 ? (
+                      <span className="text-white/50 text-sm">No guesses yet</span>
+                    ) : (
+                      guessHistory.map((guess, idx) => (
+                        <span
+                          key={`${guess}-${idx}`}
+                          className="px-3 py-1 rounded-full border border-white/50 text-white/80 text-sm sm:text-base"
+                        >
+                          {guess}
+                        </span>
+                      ))
+                    )}
+                  </div>
                 </div>
               </div>
 
