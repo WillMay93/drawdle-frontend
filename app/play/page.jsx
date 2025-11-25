@@ -413,7 +413,7 @@ if (success) {
                           {showHint
                             ? hint
                               ? hintLocation
-                                ? `${hint} — Likely found: ${hintLocation}`
+                                ? `${hint}`
                                 : hint
                               : "No hint available yet."
                             : targetHintLoading
