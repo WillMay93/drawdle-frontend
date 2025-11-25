@@ -60,6 +60,9 @@ export default function StartPage() {
   drawdle.
 </h1>
 
+        <p className="text-xl opacity-90 text-center max-w-md mt-4 mb-2">
+          Try to match the AI’s choice! You get 5 attempts.
+        </p>
 
         <div className="relative flex flex-col items-center">
   <input
@@ -76,33 +79,6 @@ export default function StartPage() {
     <span className="text-2xl -rotate-10 tracking-widest">NAME</span>
   </div>
 </div>
-
-        <div className="flex flex-col items-center gap-3">
-          <div className="flex gap-3">
-            {[
-              { label: "Easy", value: "easy", note: "Relaxed play" },
-              { label: "Hard", value: "hard", note: "10s timer" },
-            ].map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => setMode(option.value)}
-                className={`px-4 py-2 rounded-md border-2 border-white text-xl transition-all ${
-                  mode === option.value
-                    ? "bg-white text-[#2d8b57] scale-105"
-                    : "bg-transparent text-white hover:bg-white/10"
-                }`}
-              >
-                <div>{option.label}</div>
-                <div className="text-sm opacity-80">{option.note}</div>
-              </button>
-            ))}
-          </div>
-          <p className="text-lg opacity-80 text-center max-w-sm">
-            Hard mode gives you 10 seconds per attempt—miss the timer and you
-            lose the attempt automatically.
-          </p>
-        </div>
 
         {!overrideLimit && playLocked && (
           <p className="text-red-200 text-center text-lg max-w-sm">
