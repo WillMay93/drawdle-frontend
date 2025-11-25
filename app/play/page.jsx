@@ -222,7 +222,7 @@ const submitDrawing = async () => {
   const attemptNumber = attempt;
 
   try {
-    const res = await fetch("http://127.0.0.1:5050/submit", {
+    const res = await fetch("https://drawdle-backend-v1.onrender.com/submit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ image_base64: imageBase64, attempt: attemptNumber, colour: brushColor }),
@@ -271,7 +271,7 @@ const submitDrawing = async () => {
 // Save leaderboard entry ONLY when guessed correctly
 if (success) {
   try {
-    await fetch("http://127.0.0.1:5050/leaderboard", {
+    await fetch("https://drawdle-backend-v1.onrender.com/leaderboard", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
