@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useImperativeHandle, forwardRef } from "react";
+import { useEffect, useRef, useImperativeHandle, forwardRef, useCallback } from "react";
 
 const DrawingCanvas = forwardRef(function DrawingCanvas(
   {
@@ -11,6 +11,7 @@ const DrawingCanvas = forwardRef(function DrawingCanvas(
     onChangeImageBase64,
     eraser = false,
     onDrawStateChange = () => {},
+    className = "",
   },
   ref
 ) {
@@ -21,23 +22,77 @@ const DrawingCanvas = forwardRef(function DrawingCanvas(
   const currentPath = useRef([]);
   const hasMoved = useRef(false);
 
+  const exportImage = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const base64 = canvas.toDataURL("image/png");
+    onChangeImageBase64(base64);
+  }, [onChangeImageBase64]);
+
+  const drawStroke = useCallback((ctx, stroke) => {
+    const pts = stroke.points;
+    if (!pts.length) return;
+
+    // Handle single-point dots
+    if (stroke.isDot || pts.length === 1) {
+      const point = pts[0];
+      ctx.beginPath();
+      ctx.fillStyle = stroke.color;
+      ctx.arc(point.x, point.y, stroke.size / 2, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
+
+    ctx.beginPath();
+    ctx.lineWidth = stroke.size;
+    ctx.strokeStyle = stroke.color;
+    ctx.moveTo(pts[0].x, pts[0].y);
+
+    for (let i = 1; i < pts.length - 1; i++) {
+      const current = pts[i];
+      const next = pts[i + 1];
+      const midX = (current.x + next.x) / 2;
+      const midY = (current.y + next.y) / 2;
+      ctx.quadraticCurveTo(current.x, current.y, midX, midY);
+    }
+
+    // Final segment to the last point
+    const last = pts[pts.length - 1];
+    ctx.lineTo(last.x, last.y);
+    ctx.stroke();
+  }, []);
+
+  const redraw = useCallback(() => {
+    const canvas = canvasRef.current;
+    const ctx = ctxRef.current;
+    if (!canvas || !ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    paths.current.forEach((path) => {
+      drawStroke(ctx, path);
+    });
+
+    exportImage();
+    onDrawStateChange(paths.current.length > 0);
+  }, [drawStroke, exportImage, onDrawStateChange]);
+
   // ---------------------------
   // Set up canvas
   // ---------------------------
   useEffect(() => {
     const canvas = canvasRef.current;
+    if (!canvas) return;
     canvas.width = width;
     canvas.height = height;
 
     const ctx = canvas.getContext("2d");
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    ctx.lineWidth = size;
-    ctx.strokeStyle = color;
     ctxRef.current = ctx;
 
     redraw();
-  }, [width, height]);
+  }, [width, height, redraw]);
 
   // ---------------------------
   // Update brush color & size
@@ -99,8 +154,19 @@ const DrawingCanvas = forwardRef(function DrawingCanvas(
     currentPath.current.push(pos);
 
     const ctx = ctxRef.current;
-    ctx.lineTo(pos.x, pos.y);
-    ctx.stroke();
+    const pts = currentPath.current;
+
+    // For the first segment, draw a straight line; afterwards smooth with quadratic curves
+    if (pts.length === 2) {
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+    } else if (pts.length > 2) {
+      const prev = pts[pts.length - 2];
+      const midX = (prev.x + pos.x) / 2;
+      const midY = (prev.y + pos.y) / 2;
+      ctx.quadraticCurveTo(prev.x, prev.y, midX, midY);
+      ctx.stroke();
+    }
   };
 
   // ---------------------------
@@ -138,47 +204,7 @@ const DrawingCanvas = forwardRef(function DrawingCanvas(
     }
 
     currentPath.current = [];
-    exportImage();
-    onDrawStateChange(paths.current.length > 0);
-  };
-
-  // ---------------------------
-  // Redraw all strokes (used for Undo, resize, etc.)
-  // ---------------------------
-  const redraw = () => {
-    const canvas = canvasRef.current;
-    const ctx = ctxRef.current;
-    if (!ctx) return;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    paths.current.forEach((path) => {
-      if (path.isDot && path.points.length) {
-        const point = path.points[0];
-        ctx.beginPath();
-        ctx.fillStyle = path.color;
-        ctx.arc(point.x, point.y, path.size / 2, 0, Math.PI * 2);
-        ctx.fill();
-        return;
-      }
-
-      ctx.beginPath();
-      ctx.lineWidth = path.size;
-      ctx.strokeStyle = path.color;
-
-      path.points.forEach((p, i) => {
-        if (i === 0) {
-          ctx.moveTo(p.x, p.y);
-        } else {
-          ctx.lineTo(p.x, p.y);
-        }
-      });
-
-      ctx.stroke();
-    });
-
-    exportImage();
-    onDrawStateChange(paths.current.length > 0);
+    redraw();
   };
 
   // ---------------------------
@@ -196,14 +222,6 @@ const DrawingCanvas = forwardRef(function DrawingCanvas(
   }));
 
   // ---------------------------
-  // Export to Base64
-  // ---------------------------
-  const exportImage = () => {
-    const base64 = canvasRef.current.toDataURL("image/png");
-    onChangeImageBase64(base64);
-  };
-
-  // ---------------------------
   // Disable scrolling while drawing on mobile
   // ---------------------------
   useEffect(() => {
@@ -217,7 +235,7 @@ const DrawingCanvas = forwardRef(function DrawingCanvas(
   return (
     <canvas
       ref={canvasRef}
-      className="touch-none select-none bg-white rounded-xl"
+      className={`block h-full w-full touch-none select-none bg-white rounded-xl ${className}`}
       onMouseDown={handleStart}
       onMouseMove={handleMove}
       onMouseUp={handleEnd}
