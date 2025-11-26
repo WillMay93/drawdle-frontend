@@ -35,6 +35,9 @@ export default function PlayPage() {
   const [finalScore, setFinalScore] = useState(0);
   const [brushColor, setBrushColor] = useState("#000000");
   const [brushSize, setBrushSize] = useState(12);
+  const brushTrackRef = useRef(null);
+  const minBrushSize = 4;
+  const maxBrushSize = 28;
   const [showIntro, setShowIntro] = useState(true);
   const [introLeaving, setIntroLeaving] = useState(false);
   const closeIntro = () => {
@@ -77,18 +80,72 @@ export default function PlayPage() {
     </div>
   );
 
+  const updateBrushSizeFromPointer = useCallback(
+    (clientX) => {
+      const track = brushTrackRef.current;
+      if (!track) return;
+      const rect = track.getBoundingClientRect();
+      const ratio = Math.min(Math.max((clientX - rect.left) / rect.width, 0), 1);
+      const next = Math.round(minBrushSize + ratio * (maxBrushSize - minBrushSize));
+      setBrushSize(next);
+    },
+    [minBrushSize, maxBrushSize]
+  );
+
+  const handleBrushDragStart = useCallback(
+    (e) => {
+      e.preventDefault();
+      updateBrushSizeFromPointer(e.clientX);
+      const move = (event) => {
+        event.preventDefault();
+        updateBrushSizeFromPointer(event.clientX);
+      };
+      const end = () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", end);
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", end);
+    },
+    [updateBrushSizeFromPointer]
+  );
+
   const BrushSizeControl = () => (
-    <div className="flex items-center gap-2 bg-white/10 px-3 py-2 rounded-full text-sm sm:text-base">
+    <div className="flex items-center gap-3 bg-white/10 px-3 py-2 rounded-full text-sm sm:text-base">
       <span className="uppercase tracking-[0.25em] text-xs sm:text-[0.75rem]">Brush</span>
-      <input
-        type="range"
-        min={4}
-        max={28}
-        step={1}
-        value={brushSize}
-        onChange={(e) => setBrushSize(Number(e.target.value))}
-        className="accent-white h-2 w-28 sm:w-36"
-      />
+      <div
+        ref={brushTrackRef}
+        onPointerDown={handleBrushDragStart}
+        className="relative h-2 w-28 sm:w-36 rounded-full bg-white/30 cursor-pointer"
+        role="slider"
+        aria-valuemin={minBrushSize}
+        aria-valuemax={maxBrushSize}
+        aria-valuenow={brushSize}
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
+            e.preventDefault();
+            setBrushSize((v) => Math.max(minBrushSize, v - 1));
+          } else if (e.key === "ArrowRight" || e.key === "ArrowUp") {
+            e.preventDefault();
+            setBrushSize((v) => Math.min(maxBrushSize, v + 1));
+          }
+        }}
+      >
+        <div
+          className="absolute top-1/2 -translate-y-1/2 h-2 rounded-full bg-white/70"
+          style={{
+            width: `${((brushSize - minBrushSize) / (maxBrushSize - minBrushSize)) * 100}%`,
+          }}
+        />
+        <div
+          className="absolute top-1/2 -translate-y-1/2 w-5 h-5 sm:w-6 sm:h-6 bg-white rounded-full shadow-md border border-[#2d8b57]"
+          style={{
+            left: `${((brushSize - minBrushSize) / (maxBrushSize - minBrushSize)) * 100}%`,
+            transform: "translate(-50%, -50%)",
+          }}
+        />
+      </div>
       <span className="w-8 text-center text-base sm:text-lg">{brushSize}</span>
     </div>
   );
