@@ -34,6 +34,7 @@ export default function PlayPage() {
   const [showGameOver, setShowGameOver] = useState(false);
   const [finalScore, setFinalScore] = useState(0);
   const [brushColor, setBrushColor] = useState("#000000");
+  const [brushSize, setBrushSize] = useState(12);
   const [showIntro, setShowIntro] = useState(true);
   const [introLeaving, setIntroLeaving] = useState(false);
   const closeIntro = () => {
@@ -73,6 +74,22 @@ export default function PlayPage() {
           style={{ backgroundColor: c }}
         />
       ))}
+    </div>
+  );
+
+  const BrushSizeControl = () => (
+    <div className="flex items-center gap-2 bg-white/10 px-3 py-2 rounded-full text-sm sm:text-base">
+      <span className="uppercase tracking-[0.25em] text-xs sm:text-[0.75rem]">Brush</span>
+      <input
+        type="range"
+        min={4}
+        max={28}
+        step={1}
+        value={brushSize}
+        onChange={(e) => setBrushSize(Number(e.target.value))}
+        className="accent-white h-2 w-28 sm:w-36"
+      />
+      <span className="w-8 text-center text-base sm:text-lg">{brushSize}</span>
     </div>
   );
 
@@ -368,7 +385,7 @@ if (success) {
           {/* Canvas & feedback area */}
           <main className="flex flex-1 w-full flex-col items-center gap-3 sm:gap-6">
             <div className="w-full max-w-4xl mx-auto flex flex-col gap-2 sm:gap-4">
-              <div className="flex items-center justify-between gap-3 text-xl sm:text-2xl font-bold">
+              <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4 text-xl sm:text-2xl font-bold">
                 <div className="text-left flex-1">
                   Attempt {attempt} / {maxAttempts}
                   {hardMode && timeLeft !== null && (
@@ -377,7 +394,10 @@ if (success) {
                     </span>
                   )}
                 </div>
-                <PaletteControls className="justify-end flex-shrink-0" />
+                <div className="flex flex-wrap items-center justify-end gap-3 sm:gap-4">
+                  <BrushSizeControl />
+                  <PaletteControls className="justify-end flex-shrink-0" />
+                </div>
               </div>
 
               <div className="relative bg-white rounded-2xl shadow-2xl w-full aspect-[3/4] sm:aspect-video flex items-center justify-center overflow-hidden">
@@ -386,7 +406,7 @@ if (success) {
                   width={1000}
                   height={800}
                   color={brushColor}
-                  size={12}
+                  size={brushSize}
                   onChangeImageBase64={setImageBase64}
                   onDrawStateChange={setHasDrawing}
                 />
@@ -413,7 +433,7 @@ if (success) {
                           {showHint
                             ? hint
                               ? hintLocation
-                                ? `${hint}`
+                                ? `${hint} — Likely found: ${hintLocation}`
                                 : hint
                               : "No hint available yet."
                             : targetHintLoading
