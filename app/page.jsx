@@ -104,6 +104,8 @@ export default function StartPage() {
             <span>Override daily limit (dev use only)</span>
           </label>
         </div>
+        
+                <p className="text-sm opacity-80">Created by: William May</p>
       </div>
     </div>
     
